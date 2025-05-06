@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <unordered_map>
 #include <chrono>
 
 using namespace std;
@@ -32,6 +33,7 @@ void partitionGraph(Graph& g, int numParts, vector<int>& part) {
     idx_t options[METIS_NOPTIONS];
     METIS_SetDefaultOptions(options);
     options[METIS_OPTION_NUMBERING] = 0;
+    options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT;  // Minimize edge cuts
     int status = METIS_PartGraphKway(
         &nVertices, &ncon, xadj.data(), adjncy.data(), nullptr, nullptr, adjwgt.data(),
         &nParts, nullptr, nullptr, options, &objval, part_metis.data()
@@ -42,6 +44,11 @@ void partitionGraph(Graph& g, int numParts, vector<int>& part) {
     }
     for (int i = 0; i < nVertices; ++i) part[i] = part_metis[i];
 }
+
+struct BoundaryUpdate {
+    int node_id;
+    int distance;
+};
 
 int main(int argc, char* argv[]) {
     MPI_Init(&argc, &argv);
@@ -71,18 +78,17 @@ int main(int argc, char* argv[]) {
 
     auto t_subgraph_start = high_resolution_clock::now();
     Graph localGraph(numNodes);
+    unordered_map<int, vector<int>> boundary_nodes_to_processes;
+    set<int> local_boundary_nodes;
+
     for (int u = 0; u < numNodes; ++u) {
         if (part[u] == rank) {
             for (auto& [v, w] : g.adj[u]) {
                 localGraph.addEdge(u, v, w);
-            }
-        }
-    }
-    set<int> boundary_nodes;
-    for (int u = 0; u < numNodes; ++u) {
-        if (part[u] == rank) {
-            for (auto& [v, w] : g.adj[u]) {
-                if (part[v] != rank) boundary_nodes.insert(u);
+                if (part[v] != rank) {
+                    local_boundary_nodes.insert(u);
+                    boundary_nodes_to_processes[part[v]].push_back(u);
+                }
             }
         }
     }
@@ -91,11 +97,18 @@ int main(int argc, char* argv[]) {
     SSSP sssp(localGraph);
     int source = 0;
     int num_updates = 1000;
+    int communication_interval = 100;
     auto t_update_start = high_resolution_clock::now();
 
     long long edge_update_time = 0;
     long long sssp_time = 0;
     long long comm_time = 0;
+
+    // Pre-allocate communication buffers
+    vector<vector<BoundaryUpdate>> send_buffers(size);
+    vector<vector<BoundaryUpdate>> recv_buffers(size);
+    vector<MPI_Request> send_requests;
+    vector<MPI_Request> recv_requests;
 
     for (int i = 0; i < num_updates; ++i) {
         int u1 = i % numNodes;
@@ -125,24 +138,68 @@ int main(int argc, char* argv[]) {
         auto t_sssp_end = high_resolution_clock::now();
         sssp_time += duration_cast<microseconds>(t_sssp_end - t_sssp_start).count();
 
-        auto t_comm_start = high_resolution_clock::now();
-        vector<int> local_boundary_dist(numNodes, -1);
-        for (int u : boundary_nodes) local_boundary_dist[u] = sssp.dist[u];
-        vector<int> global_boundary_dist(numNodes * size, -1);
-        MPI_Allgather(local_boundary_dist.data(), numNodes, MPI_INT,
-                      global_boundary_dist.data(), numNodes, MPI_INT, MPI_COMM_WORLD);
+        // Communication every N steps or last iteration
+        if (i % communication_interval == 0 || i == num_updates - 1) {
+            auto t_comm_start = high_resolution_clock::now();
 
-        // Update ghost nodes if needed (only for your local nodes)
-        for (int p = 0; p < size; ++p) {
-            if (p == rank) continue;
-            for (int u = 0; u < numNodes; ++u) {
-                if (part[u] == p && sssp.dist[u] > global_boundary_dist[p * numNodes + u] && global_boundary_dist[p * numNodes + u] != -1) {
-                    sssp.dist[u] = global_boundary_dist[p * numNodes + u];
+            // 1. Prepare sparse boundary data
+            for (auto& [proc, nodes] : boundary_nodes_to_processes) {
+                send_buffers[proc].clear();
+                for (int u : nodes) {
+                    send_buffers[proc].push_back({u, sssp.dist[u]});
                 }
             }
+
+            // 2. Exchange boundary data sizes first
+            vector<int> send_counts(size, 0);
+            vector<int> recv_counts(size, 0);
+            for (int p = 0; p < size; p++) {
+                send_counts[p] = send_buffers[p].size();
+            }
+            MPI_Alltoall(send_counts.data(), 1, MPI_INT, 
+                         recv_counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
+
+            // 3. Prepare receive buffers
+            for (int p = 0; p < size; p++) {
+                recv_buffers[p].resize(recv_counts[p]);
+            }
+
+            // 4. Non-blocking exchange of boundary data
+            send_requests.clear();
+            recv_requests.clear();
+            for (int p = 0; p < size; p++) {
+                if (p == rank) continue;
+                if (send_counts[p] > 0) {
+                    MPI_Request req;
+                    MPI_Isend(send_buffers[p].data(), send_counts[p] * sizeof(BoundaryUpdate), MPI_BYTE,
+                              p, 0, MPI_COMM_WORLD, &req);
+                    send_requests.push_back(req);
+                }
+                if (recv_counts[p] > 0) {
+                    MPI_Request req;
+                    MPI_Irecv(recv_buffers[p].data(), recv_counts[p] * sizeof(BoundaryUpdate), MPI_BYTE,
+                              p, 0, MPI_COMM_WORLD, &req);
+                    recv_requests.push_back(req);
+                }
+            }
+
+            // 5. Process received updates
+            MPI_Waitall(recv_requests.size(), recv_requests.data(), MPI_STATUSES_IGNORE);
+            for (int p = 0; p < size; p++) {
+                if (p == rank) continue;
+                for (auto& update : recv_buffers[p]) {
+                    if (part[update.node_id] == rank && 
+                        sssp.dist[update.node_id] > update.distance) {
+                        sssp.dist[update.node_id] = update.distance;
+                    }
+                }
+            }
+
+            // Cleanup
+            MPI_Waitall(send_requests.size(), send_requests.data(), MPI_STATUSES_IGNORE);
+            auto t_comm_end = high_resolution_clock::now();
+            comm_time += duration_cast<microseconds>(t_comm_end - t_comm_start).count();
         }
-        auto t_comm_end = high_resolution_clock::now();
-        comm_time += duration_cast<microseconds>(t_comm_end - t_comm_start).count();
     }
     auto t_update_end = high_resolution_clock::now();
 
@@ -154,14 +211,14 @@ int main(int argc, char* argv[]) {
     auto t1 = high_resolution_clock::now();
 
     if (rank == 0) {
-        cout << "Partitioning time: " << duration_cast<seconds>(t_partition_end - t_partition_start).count() << " seconds\n";
-        cout << "Subgraph construction time: " << duration_cast<seconds>(t_subgraph_end - t_subgraph_start).count() << " seconds\n";
-        cout << "Edge update total time: " << edge_update_time / 1e6 << " seconds\n";
-        cout << "SSSP total time: " << sssp_time / 1e6 << " seconds\n";
-        cout << "Communication total time: " << comm_time / 1e6 << " seconds\n";
-        cout << "Reduce time: " << duration_cast<seconds>(t_reduce_end - t_reduce_start).count() << " seconds\n";
-        cout << "Total update loop time: " << duration_cast<seconds>(t_update_end - t_update_start).count() << " seconds\n";
-        cout << "Total program time: " << duration_cast<seconds>(t1 - t0).count() << " seconds\n";
+        cout << "Partitioning time: " << duration_cast<seconds>(t_partition_end - t_partition_start).count() << " sec\n";
+        cout << "Subgraph construction time: " << duration_cast<seconds>(t_subgraph_end - t_subgraph_start).count() << " sec\n";
+        cout << "Edge update total time: " << edge_update_time / 1000000.0 << " sec\n";
+        cout << "SSSP total time: " << sssp_time / 1000000.0 << " sec\n";
+        cout << "Communication total time: " << comm_time / 1000000.0 << " sec\n";
+        cout << "Reduce time: " << duration_cast<seconds>(t_reduce_end - t_reduce_start).count() << " sec\n";
+        cout << "Total update loop time: " << duration_cast<seconds>(t_update_end - t_update_start).count() << " sec\n";
+        cout << "Total program time: " << duration_cast<seconds>(t1 - t0).count() << " sec\n";
     }
     MPI_Finalize();
     return 0;
