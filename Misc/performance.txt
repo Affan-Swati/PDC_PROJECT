@@ -1,0 +1,11 @@
+MPI_ONLY:
+
+
+
+
+MPI_OPENMP:
+
+
+
+
+SEQUENTIAL:

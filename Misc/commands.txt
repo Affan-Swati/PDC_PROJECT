@@ -1,6 +1,18 @@
 ========= Sequential Commands ==============
 g++ -std=c++17 -Iinclude -o main main.cpp src/Graph.cpp src/SSSP.cpp
 ./main
+
+# 1. Compile with -pg
+g++ -pg -std=c++17 -Iinclude -o main main.cpp src/Graph.cpp src/SSSP.cpp
+
+# 2. Run your program (this generates gmon.out)
+./main
+
+# 3. Run gprof to generate analysis
+gprof ./main gmon.out > analysis.txt
+
+# 4. View the report
+less analysis.txt
 ============================================
 
 ========= MPI + OPENMP + METIS Commands ==============
@@ -15,9 +27,15 @@ mpiexec -iface enp0s3 -n 8 -f machinefile ./main
 mpic++ -std=c++17 -Iinclude main.cpp src/Graph.cpp src/SSSP.cpp -lmetis -o main
 mpiexec -n 8 -f machinefile ./main
 mpiexec -iface enp0s3 -n 8 -f machinefile ./main
+
+//Testing
+mpicxx -std=c++17 -Iinclude -L/usr/local/mpiP/lib main.cpp src/Graph.cpp src/SSSP.cpp -lmetis -lmpiP -lbfd -liberty -lunwind -lz -o main
+mpirun --oversubscribe -np 4 ./main
+export LD_LIBRARY_PATH=/home/master/mpiP/libmpiP.so:$LD_LIBRARY_PATH
+
 ========================================
 
 ========= OPENMP ONLY Commands ==============
 g++ -fopenmp main.cpp src/Graph.cpp SSSP.cpp -o sssp_omp
-
+./main
 ========================================

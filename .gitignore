@@ -13,7 +13,6 @@
 
 # Executable files
 *.exe
-*.out
 *.app
 
 # Precompiled Headers
