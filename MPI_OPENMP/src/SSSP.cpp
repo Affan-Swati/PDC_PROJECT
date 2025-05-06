@@ -11,28 +11,24 @@ SSSP::SSSP(Graph& g) : graph(g) {
 }
 
 void SSSP::compute(int source) {
-    dist.assign(graph.numNodes, numeric_limits<int>::max());
-    parent.assign(graph.numNodes, -1);
+    // Only initialize source distance if not already set
+    if (dist[source] > 0) {
+        dist[source] = 0;
+    }
 
-    dist[source] = 0;
     priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;
     pq.push({0, source});
 
     while (!pq.empty()) {
         auto [d, u] = pq.top(); pq.pop();
-        
         if (d > dist[u]) continue;
 
-        #pragma omp parallel for schedule(dynamic)
-        for (int i = 0; i < graph.adj[u].size(); ++i) {
-            auto [v, weight] = graph.adj[u][i];
-            int newDist = dist[u] + weight;
-            {
-                if (newDist < dist[v]) {
-                    dist[v] = newDist;
-                    parent[v] = u;
-                    pq.push({newDist, v});
-                }
+        for (auto& [v, w] : graph.adj[u]) {
+            int newDist = dist[u] + w;
+            if (newDist < dist[v]) {
+                dist[v] = newDist;
+                parent[v] = u;
+                pq.push({newDist, v});
             }
         }
     }

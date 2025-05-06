@@ -11,8 +11,13 @@ mpiexec -iface enp0s3 -n 8 -f machinefile ./main
 ======================================================
 
 
-========= OPENMP Commands ==============
-g++ -fopenmp -std=c++17 -Iinclude main.cpp src/Graph.cpp src/SSSP.cpp -lmetis -o main
-export OMP_NUM_THREADS=4
-./main
+========= MPI ONLY Commands ==============
+mpic++ -std=c++17 -Iinclude main.cpp src/Graph.cpp src/SSSP.cpp -lmetis -o main
+mpiexec -n 8 -f machinefile ./main
+mpiexec -iface enp0s3 -n 8 -f machinefile ./main
+========================================
+
+========= OPENMP ONLY Commands ==============
+g++ -fopenmp main.cpp src/Graph.cpp SSSP.cpp -o sssp_omp
+
 ========================================

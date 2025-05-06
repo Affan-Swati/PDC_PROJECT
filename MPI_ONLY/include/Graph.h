@@ -5,15 +5,16 @@
 #include <string>
 #include <utility>
 
+using namespace std;
+
 class Graph {
 public:
     int numNodes;
-    std::vector<std::vector<std::pair<int, int>>> adj;
+    vector<vector<pair<int, int>>> adj;
 
     Graph(int n);
-    Graph(const std::string& filename);
-    // New: construct subgraph from global graph and partition info
-    Graph(const Graph& global, const std::vector<int>& part, int my_rank);
+    Graph(const string& filename);
+    Graph(const Graph& global, const vector<int>& part, int my_rank);
 
     void addEdge(int u, int v, int weight);
     void updateEdge(int u, int v, int newWeight);

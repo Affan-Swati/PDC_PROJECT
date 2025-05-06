@@ -10,23 +10,24 @@ SSSP::SSSP(Graph& g) : graph(g) {
 }
 
 void SSSP::compute(int source) {
-    dist.assign(graph.numNodes, numeric_limits<int>::max());
-    parent.assign(graph.numNodes, -1);
+    // Don't reset ALL distances at start
+    if (dist[source] > 0) {
+        dist[source] = 0;
+    }
 
-    using P = pair<int, int>;
-    priority_queue<P, vector<P>, greater<P>> pq;
-    dist[source] = 0;
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<>> pq;
     pq.push({0, source});
 
     while (!pq.empty()) {
         auto [d, u] = pq.top(); pq.pop();
         if (d > dist[u]) continue;
 
-        for (auto [v, w] : graph.adj[u]) {
-            if (dist[u] + w < dist[v]) {
-                dist[v] = dist[u] + w;
+        for (auto& [v, w] : graph.adj[u]) {
+            int newDist = dist[u] + w;
+            if (newDist < dist[v]) {
+                dist[v] = newDist;
                 parent[v] = u;
-                pq.push({dist[v], v});
+                pq.push({newDist, v});
             }
         }
     }

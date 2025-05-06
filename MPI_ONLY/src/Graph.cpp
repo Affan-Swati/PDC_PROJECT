@@ -38,7 +38,6 @@ Graph::Graph(const string& filename) {
     infile.close();
 }
 
-// New: Construct subgraph for this rank
 Graph::Graph(const Graph& global, const std::vector<int>& part, int my_rank) {
     numNodes = global.numNodes;
     adj.resize(numNodes);

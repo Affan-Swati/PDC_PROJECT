@@ -14,7 +14,6 @@ public:
 
     Graph(int n);
     Graph(const string& filename);
-    // New: construct subgraph from global graph and partition info
     Graph(const Graph& global, const vector<int>& part, int my_rank);
 
     void addEdge(int u, int v, int weight);

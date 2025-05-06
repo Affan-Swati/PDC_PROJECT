@@ -62,5 +62,11 @@ int main(int argc, char* argv[]) {
     cout << "SSSP total time: " << sssp_time / 1e6 << " seconds\n";
     cout << "Total update loop time: " << duration_cast<seconds>(t_update_end - t_update_start).count() << " seconds\n";
     cout << "Total program time: " << duration_cast<seconds>(t1 - t0).count() << " seconds\n";
+
+    // cout << "Final SSSP distances (Sequential):\n";
+    // for (int u = 0; u < g.numNodes; ++u) {
+    //     cout << u << ": " << sssp.dist[u] << "\n";
+    // }
+
     return 0;
 }
