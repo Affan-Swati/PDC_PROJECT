@@ -1,0 +1,18 @@
+========= Sequential Commands ==============
+g++ -std=c++17 -Iinclude -o main main.cpp src/Graph.cpp src/SSSP.cpp
+./main
+============================================
+
+========= MPI + OPENMP + METIS Commands ==============
+mpic++ -fopenmp -std=c++17 -Iinclude main.cpp src/Graph.cpp src/SSSP.cpp -lmetis -o main
+export OMP_NUM_THREADS=4
+mpiexec -n 8 -f machinefile ./main
+mpiexec -iface enp0s3 -n 8 -f machinefile ./main
+======================================================
+
+
+========= OPENMP Commands ==============
+g++ -fopenmp -std=c++17 -Iinclude main.cpp src/Graph.cpp src/SSSP.cpp -lmetis -o main
+export OMP_NUM_THREADS=4
+./main
+========================================
