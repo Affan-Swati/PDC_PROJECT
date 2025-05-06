@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
     int source = 0;
     SSSP sssp(g);
 
-    int num_updates = 1000; 
+    int num_updates =10000; 
     auto t_update_start = high_resolution_clock::now();
     long long edge_update_time = 0;
     long long sssp_time = 0;
