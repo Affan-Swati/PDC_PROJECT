@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
     int numNodes;
 
     if (rank == 0) {
-        g = Graph("data/large_graph.txt");
+        g = Graph("data/graph.txt");
         numNodes = g.numNodes;
         partitionGraph(g, size, part);
     }
@@ -103,8 +103,9 @@ int main(int argc, char* argv[]) {
 
     int source = 0;
     SSSP sssp(g);
+    sssp.compute(source);
 
-    int num_updates = 1000;
+    int num_updates = 5;
     long long edge_update_time = 0;
     long long sssp_time = 0;
 
@@ -119,7 +120,9 @@ int main(int argc, char* argv[]) {
 
         // Compute SSSP
         auto t_sssp_start = high_resolution_clock::now();
-        sssp.compute(source);
+        if(part[i % g.numNodes] == rank && part[(i + 1) % g.numNodes] == rank) {
+            sssp.compute(source);
+        }
         auto t_sssp_end = high_resolution_clock::now();
         sssp_time += duration_cast<microseconds>(t_sssp_end - t_sssp_start).count();
 
@@ -131,7 +134,9 @@ int main(int argc, char* argv[]) {
 
         // Compute SSSP again after edge addition
         t_sssp_start = high_resolution_clock::now();
-        sssp.compute(source);
+        if(part[(i + 2) % g.numNodes] == rank && part[(i + 3) % g.numNodes] == rank) {
+            sssp.compute(source);
+        }
         t_sssp_end = high_resolution_clock::now();
         sssp_time += duration_cast<microseconds>(t_sssp_end - t_sssp_start).count();
 
@@ -143,7 +148,9 @@ int main(int argc, char* argv[]) {
 
         // Compute SSSP again after edge removal
         t_sssp_start = high_resolution_clock::now();
-        sssp.compute(source);
+        if(part[(i + 4) % g.numNodes] == rank && part[(i + 5) % g.numNodes] == rank) {
+            sssp.compute(source);
+        }
         t_sssp_end = high_resolution_clock::now();
         sssp_time += duration_cast<microseconds>(t_sssp_end - t_sssp_start).count();
     }
@@ -158,10 +165,10 @@ int main(int argc, char* argv[]) {
         cout << "Total update loop time: " << duration_cast<seconds>(t_update_end - t_update_start).count() << " seconds\n";
         cout << "Total program time: " << duration_cast<seconds>(t1 - t0).count() << " seconds\n";
 
-        // cout << "Final SSSP distances (MPI ONLY):\n";
-        // for (int u = 0; u < g.numNodes; ++u) {
-        //     cout << u << ": " << sssp.dist[u] << "\n";
-        // }
+        cout << "Final SSSP distances (MPI ONLY):\n";
+        for (int u = 0; u < g.numNodes; ++u) {
+            cout << u << ": " << sssp.dist[u] << "\n";
+        }
     }
 
     MPI_Finalize();
